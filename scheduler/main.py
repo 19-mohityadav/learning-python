@@ -24,23 +24,26 @@ def save_tasks(tasks):
         json.dump(tasks, f, indent=4)
 
 
-# Add Tasks
+# Add Task
 def add_task():
     user = input("Enter user: ")
     task = input("Enter task: ")
 
     while True:
-        time_str = input("Enter time (YYYY-MM-DD HH:MM:SS): ")
+        time_str = input("Enter time (DD-MM-YYYY HH:MM:SS): ")
         try:
             datetime.datetime.strptime(time_str, "%d-%m-%Y %H:%M:%S")
             break
         except:
-            print("❌ Invalid format! Try again.")
-            print("Format: DD-MM-YYYY HH:MM:SS (e.g. 22-03-2026 20:25:00)")
+            print("❌ Invalid format! Use: 22-03-2026 20:25:00")
 
-    repeat = input("Repeat (none/daily): ").lower()
-    if repeat not in ["none", "daily"]:
+    repeat = input("Repeat (none/daily/weekly): ").lower()
+    if repeat not in ["none", "daily", "weekly"]:
         repeat = "none"
+
+    priority = input("Priority (low/medium/high): ").lower()
+    if priority not in ["low", "medium", "high"]:
+        priority = "medium"
 
     tasks = load_tasks()
 
@@ -49,6 +52,7 @@ def add_task():
         "task": task,
         "time": time_str,
         "repeat": repeat,
+        "priority": priority,
         "done": False
     })
 
@@ -63,9 +67,34 @@ def show_tasks():
         print("No tasks found.")
         return
 
+    # Sort by time safely
+    def get_time(t):
+        try:
+            return datetime.datetime.strptime(t["time"], "%d-%m-%Y %H:%M:%S")
+        except:
+            return datetime.datetime.now()
+
+    tasks.sort(key=get_time)
+
     print("\n📋 Task List:")
     for i, t in enumerate(tasks):
-        print(f"{i+1}. {t['user']} - {t['task']} at {t['time']} ({t['repeat']})")
+        priority = t.get("priority", "medium").upper()
+        print(f"{i+1}. [{priority}] {t['user']} - {t['task']} at {t['time']} ({t['repeat']})")
+
+
+# Search Task
+def search_task():
+    name = input("Enter user to search: ")
+    tasks = load_tasks()
+
+    found = False
+    for t in tasks:
+        if t["user"].lower() == name.lower():
+            print(f"🔍 [{t.get('priority','medium')}] {t['user']} - {t['task']} at {t['time']}")
+            found = True
+
+    if not found:
+        print("❌ No tasks found")
 
 
 # Delete Task
@@ -78,17 +107,38 @@ def delete_task():
 
     try:
         index = int(input("Enter task number to delete: ")) - 1
+
         if 0 <= index < len(tasks):
             removed = tasks.pop(index)
             save_tasks(tasks)
             print(f"🗑 Deleted: {removed['task']}")
         else:
             print("❌ Invalid number")
+
     except:
         print("❌ Invalid input")
 
 
-# SCHEDULER
+# Time Remaining
+def time_remaining():
+    tasks = load_tasks()
+    now = datetime.datetime.now()
+
+    print("\n⏳ Time Remaining:")
+    for t in tasks:
+        try:
+            task_time = datetime.datetime.strptime(t["time"], "%d-%m-%Y %H:%M:%S")
+            diff = task_time - now
+
+            if diff.total_seconds() > 0:
+                print(f"{t['task']} → {diff}")
+            else:
+                print(f"{t['task']} → Time Passed")
+        except:
+            print(f"{t['task']} → Invalid time format")
+
+
+# Scheduler
 def run_scheduler():
     while True:
         tasks = load_tasks()
@@ -97,16 +147,23 @@ def run_scheduler():
         updated_tasks = []
 
         for t in tasks:
-            task_time = datetime.datetime.strptime(t["time"], "%d-%m-%Y %H:%M:%S")
+            try:
+                task_time = datetime.datetime.strptime(t["time"], "%d-%m-%Y %H:%M:%S")
+            except:
+                updated_tasks.append(t)
+                continue
 
-            # Trigger only once
             if not t.get("done", False) and now >= task_time:
-                print(f"\n🔔 {t['user']} → {t['task']}")
+                print(f"\n🔔 [{t.get('priority','medium')}] {t['user']} → {t['task']}")
 
                 if t["repeat"] == "daily":
                     new_time = task_time + datetime.timedelta(days=1)
                     t["time"] = new_time.strftime("%d-%m-%Y %H:%M:%S")
-                    t["done"] = False
+
+                elif t["repeat"] == "weekly":
+                    new_time = task_time + datetime.timedelta(days=7)
+                    t["time"] = new_time.strftime("%d-%m-%Y %H:%M:%S")
+
                 else:
                     t["done"] = True
 
@@ -116,14 +173,16 @@ def run_scheduler():
         time.sleep(1)
 
 
-# MENU
+# Menu
 def menu():
     while True:
-        print("\n===== TASK SCHEDULER =====")
+        print("\n===== TASK SCHEDULER (LEVEL 2) =====")
         print("1. Add Task")
         print("2. Show Tasks")
         print("3. Delete Task")
-        print("4. Exit")
+        print("4. Search by User")
+        print("5. Time Remaining")
+        print("6. Exit")
 
         choice = input("Enter choice: ")
 
@@ -134,6 +193,10 @@ def menu():
         elif choice == "3":
             delete_task()
         elif choice == "4":
+            search_task()
+        elif choice == "5":
+            time_remaining()
+        elif choice == "6":
             print("Exiting...")
             break
         else:
@@ -142,7 +205,6 @@ def menu():
 
 # Main
 if __name__ == "__main__":
-    # Start scheduler thread
     t = threading.Thread(target=run_scheduler, daemon=True)
     t.start()
 
